@@ -32,6 +32,7 @@ pub struct Settings {
     pub backup_dir: String,
     #[serde(default = "default_backup_format")]
     pub backup_format: String,
+    pub commit_cmd: Option<String>,
 }
 
 fn default_backup_dir() -> String {
@@ -58,6 +59,10 @@ impl Config {
 
     pub fn backup_dir(&self) -> Result<PathBuf> {
         expand_path(&self.settings.backup_dir)
+    }
+
+    pub fn commit_cmd(&self) -> Option<String> {
+        self.settings.commit_cmd.clone()
     }
 
     fn validate(&self) -> Result<()> {

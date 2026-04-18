@@ -5,4 +5,5 @@ pub mod init;
 pub mod link;
 pub mod profile;
 pub mod status;
+pub mod sync;
 pub mod unlink;

@@ -3,6 +3,7 @@ use color_eyre::eyre::{Result, eyre};
 use std::path::{Path, PathBuf};
 
 use crate::cli::host::HostCommand;
+use crate::cli::sync::SyncCommand;
 use crate::cli::{
     deps::DepsCommand, init::InitCommand, link::LinkCommand, profile::ProfileCommand,
     status::StatusCommand, unlink::UnlinkCommand,
@@ -36,6 +37,8 @@ enum Commands {
     Host(HostCommand),
     /// Dependency management
     Deps(DepsCommand),
+    /// Sync with remote repository
+    Sync(SyncCommand),
 }
 
 impl Cli {
@@ -55,6 +58,7 @@ impl Cli {
             Commands::Profile(cmd) => cmd.run(&config_path),
             Commands::Host(cmd) => cmd.run(&config_path),
             Commands::Deps(cmd) => cmd.run(&config_path),
+            Commands::Sync(cmd) => cmd.run(&config_path),
         }
     }
 }
