@@ -13,11 +13,8 @@ use crate::{
 
 #[derive(clap::Parser, Debug)]
 pub struct LinkCommand {
-    /// Module name to link (omit for --all)
+    /// Module name to link (omit to link all modules in the active profile)
     module: Option<String>,
-    /// Link all modules in the active profile
-    #[arg(long)]
-    all: bool,
     /// Override the active profile
     #[arg(long)]
     profile: Option<String>,
@@ -42,7 +39,7 @@ impl LinkCommand {
             state.active_profile = Some(p.clone());
         }
 
-        if self.all || self.module.is_none() {
+        if self.module.is_none() {
             // Link all modules in the active profile
             let profile_name = profile.as_deref().ok_or_else(|| {
             eyre!("no active profile; use --profile to specify one, or set a default_profile on your host")
