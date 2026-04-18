@@ -147,7 +147,9 @@ impl CreateCommand {
             .interact_text()?;
 
         // Collect available modules, pre-selecting from --from profile if given
-        let module_names: Vec<&String> = config.modules.keys().collect();
+        let mut module_names: Vec<&String> = config.modules.keys().collect();
+        module_names.sort();
+
         let preselected: Vec<bool> = if let Some(ref from) = self.from {
             let from_profile = config
                 .profiles
