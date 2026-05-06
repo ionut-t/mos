@@ -1,5 +1,5 @@
 use color_eyre::eyre::{self, Result, eyre};
-use dialoguer::{Input, MultiSelect, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
 use std::path::Path;
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
@@ -25,6 +25,8 @@ enum ProfileCommands {
     Create(CreateCommand),
     /// Override a module for the active profile
     Override(OverrideCommand),
+    /// Remove a profile
+    Remove(RemoveCommand),
 }
 
 impl ProfileCommand {
@@ -34,6 +36,7 @@ impl ProfileCommand {
             ProfileCommands::Switch(cmd) => cmd.run(config_path),
             ProfileCommands::Create(cmd) => cmd.run(config_path),
             ProfileCommands::Override(cmd) => cmd.run(config_path),
+            ProfileCommands::Remove(cmd) => cmd.run(config_path),
         }
     }
 }
@@ -262,6 +265,111 @@ impl OverrideCommand {
             self.module
         );
 
+        Ok(())
+    }
+}
+
+#[derive(clap::Parser, Debug)]
+pub struct RemoveCommand {
+    /// Name of the profile to remove
+    name: Option<String>,
+    /// Also delete the profile's dotfiles directory
+    #[arg(long)]
+    purge: bool,
+}
+
+impl RemoveCommand {
+    pub fn run(&self, config_path: &Path) -> Result<()> {
+        let config = Config::load(config_path)?;
+        let state = State::load()?;
+
+        let name = match &self.name {
+            Some(n) => {
+                if !config.profiles.contains_key(n) {
+                    eyre::bail!("profile '{}' does not exist", n);
+                }
+                n.clone()
+            }
+            None => {
+                let mut names: Vec<&String> = config.profiles.keys().collect();
+                names.sort();
+                if names.is_empty() {
+                    eyre::bail!("no profiles configured");
+                }
+                let idx = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Select profile to remove")
+                    .items(&names)
+                    .default(0)
+                    .interact()?;
+                names[idx].clone()
+            }
+        };
+
+        if state.active_profile.as_deref() == Some(&name) {
+            eyre::bail!(
+                "profile '{}' is currently active — switch to another profile first",
+                name
+            );
+        }
+
+        let prompt = if self.purge {
+            format!(
+                "Remove profile '{}' and delete its dotfiles directory?",
+                name
+            )
+        } else {
+            format!("Remove profile '{}'?", name)
+        };
+        let confirmed = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(prompt)
+            .default(false)
+            .interact()?;
+        if !confirmed {
+            println!("Aborted.");
+            return Ok(());
+        }
+
+        let raw = std::fs::read_to_string(config_path)
+            .map_err(|e| eyre!("failed to read {}: {}", config_path.display(), e))?;
+        let mut doc: DocumentMut = raw
+            .parse()
+            .map_err(|e| eyre!("failed to parse mos.toml: {}", e))?;
+
+        doc["profiles"]
+            .as_table_mut()
+            .ok_or_else(|| eyre!("profiles is not a table"))?
+            .remove(&name);
+
+        std::fs::write(config_path, doc.to_string())
+            .map_err(|e| eyre!("failed to write mos.toml: {}", e))?;
+
+        if self.purge {
+            let dotfiles_dir = config.dotfiles_dir()?;
+
+            let gitignore_path = dotfiles_dir.join(".gitignore");
+            if gitignore_path.exists() {
+                let existing = std::fs::read_to_string(&gitignore_path)
+                    .map_err(|e| eyre!("failed to read .gitignore: {}", e))?;
+                let prefix = format!("profiles/{}/", name);
+                let filtered: Vec<&str> = existing
+                    .lines()
+                    .filter(|l| !l.starts_with(&prefix))
+                    .collect();
+                if filtered.len() != existing.lines().count() {
+                    std::fs::write(&gitignore_path, filtered.join("\n") + "\n")
+                        .map_err(|e| eyre!("failed to write .gitignore: {}", e))?;
+                }
+            }
+
+            let profile_dir = dotfiles_dir.join("profiles").join(&name);
+            if profile_dir.exists() {
+                std::fs::remove_dir_all(&profile_dir)
+                    .map_err(|e| eyre!("failed to remove {}: {}", profile_dir.display(), e))?;
+                println!("Removed directory {}", profile_dir.display());
+            }
+        }
+
+        println!("Removed profile '{}'.", name);
         Ok(())
     }
 }
