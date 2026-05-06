@@ -7,6 +7,9 @@ pub struct Profile {
     pub tracked: bool,
     #[serde(default)]
     pub modules: Vec<String>,
+    /// Modules whose profile-layer overrides should not be committed
+    #[serde(default)]
+    pub untracked: Vec<String>,
 }
 
 fn default_true() -> bool {
