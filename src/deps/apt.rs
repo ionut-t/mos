@@ -31,14 +31,13 @@ impl InstalledCache {
     }
 }
 
-pub fn install(pkgs: &[&str]) -> Result<()> {
+pub fn install(pkg: &str) -> Result<()> {
     let status = std::process::Command::new("sudo")
-        .args(["apt-get", "install", "-y"])
-        .args(pkgs)
+        .args(["apt-get", "install", "-y", pkg])
         .status()?;
 
     if !status.success() {
-        eyre::bail!("failed to install apt packages: {}", pkgs.join(", "));
+        eyre::bail!("failed to install apt package: {}", pkg);
     }
 
     Ok(())

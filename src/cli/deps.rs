@@ -146,20 +146,16 @@ fn install(config_path: &std::path::Path) -> Result<()> {
     let brew_cache = deps::brew::InstalledCache::load();
     let mut failed: Vec<String> = vec![];
 
-    let missing_apt: Vec<&str> = collected
-        .apt
-        .iter()
-        .filter(|dep| !apt_cache.is_installed(dep.pkg()))
-        .map(|dep| dep.pkg())
-        .collect();
-
-    if !missing_apt.is_empty() {
-        println!("  [apt] installing {}...", missing_apt.join(", "));
-        if let Err(e) = deps::apt::install(&missing_apt) {
-            eprintln!("  failed: {}", e);
-            failed.extend(missing_apt.into_iter().map(str::to_string));
+    for dep in &collected.apt {
+        if !apt_cache.is_installed(dep.pkg()) {
+            println!("  [apt] installing {}...", dep.pkg());
+            if let Err(e) = deps::apt::install(dep.pkg()) {
+                eprintln!("  failed: {}", e);
+                failed.push(dep.pkg().to_string());
+            }
         }
     }
+
     let missing_brew: Vec<&str> = collected
         .brew
         .iter()

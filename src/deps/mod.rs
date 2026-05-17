@@ -4,6 +4,8 @@ pub mod cargo;
 pub mod go;
 pub mod script;
 
+use std::collections::HashSet;
+
 use crate::config::{
     Config,
     host::PackageManager,
@@ -42,8 +44,17 @@ impl CollectedDeps {
             }
         }
 
+        collected.apt = dedup(collected.apt);
+        collected.brew = dedup(collected.brew);
         collected
     }
+}
+
+fn dedup(deps: Vec<BrewDep>) -> Vec<BrewDep> {
+    let mut seen = HashSet::new();
+    deps.into_iter()
+        .filter(|d| seen.insert(d.pkg().to_string()))
+        .collect()
 }
 
 pub fn is_installed(bin: &str) -> bool {
