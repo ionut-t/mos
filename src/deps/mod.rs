@@ -1,3 +1,4 @@
+pub mod apt;
 pub mod brew;
 pub mod cargo;
 pub mod go;
@@ -5,10 +6,12 @@ pub mod script;
 
 use crate::config::{
     Config,
-    module::{BrewDep, CargoDep, Deps, GoDep, ScriptDep},
+    host::PackageManager,
+    module::{BrewDep, CargoDep, Deps, GoDep, PackageDep, ScriptDep},
 };
 
 pub struct CollectedDeps {
+    pub apt: Vec<BrewDep>,
     pub brew: Vec<BrewDep>,
     pub cargo: Vec<CargoDep>,
     pub go: Vec<GoDep>,
@@ -16,10 +19,15 @@ pub struct CollectedDeps {
 }
 
 impl CollectedDeps {
-    pub fn from_profile(config: &Config, profile_name: &str) -> Self {
+    pub fn from_profile(
+        config: &Config,
+        profile_name: &str,
+        pkg_manager: Option<&PackageManager>,
+    ) -> Self {
         let profile = &config.profiles[profile_name];
 
         let mut collected = CollectedDeps {
+            apt: vec![],
             brew: vec![],
             cargo: vec![],
             go: vec![],
@@ -30,7 +38,7 @@ impl CollectedDeps {
             if let Some(module) = config.modules.get(module_name)
                 && let Some(deps) = &module.deps
             {
-                collect(&mut collected, deps);
+                collect(&mut collected, deps, pkg_manager);
             }
         }
 
@@ -42,7 +50,38 @@ pub fn is_installed(bin: &str) -> bool {
     which::which(bin).is_ok()
 }
 
-fn collect(into: &mut CollectedDeps, deps: &Deps) {
+fn collect(into: &mut CollectedDeps, deps: &Deps, pkg_manager: Option<&PackageManager>) {
+    if let Some(pkgs) = &deps.packages {
+        let use_brew = matches!(pkg_manager, Some(PackageManager::Brew) | None)
+            && (pkg_manager.is_some() || is_installed("brew"));
+        let use_apt = matches!(pkg_manager, Some(PackageManager::Apt) | None)
+            && (pkg_manager.is_some() || is_installed("apt"));
+
+        for dep in pkgs {
+            match dep {
+                PackageDep::Simple(name) => {
+                    if use_brew {
+                        into.brew.push(BrewDep::Simple(name.clone()));
+                    }
+                    if use_apt {
+                        into.apt.push(BrewDep::Simple(name.clone()));
+                    }
+                }
+                PackageDep::Platform { brew, apt } => {
+                    if use_brew && let Some(name) = brew {
+                        into.brew.push(BrewDep::Simple(name.clone()));
+                    }
+
+                    if use_apt && let Some(name) = apt {
+                        into.apt.push(BrewDep::Simple(name.clone()));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(pkgs) = &deps.apt {
+        into.apt.extend(pkgs.iter().cloned());
+    }
     if let Some(pkgs) = &deps.brew {
         into.brew.extend(pkgs.iter().cloned());
     }

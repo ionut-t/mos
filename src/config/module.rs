@@ -14,11 +14,22 @@ pub struct Module {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deps {
+    pub packages: Option<Vec<PackageDep>>,
     pub brew: Option<Vec<BrewDep>>,
     pub apt: Option<Vec<BrewDep>>,
     pub go: Option<Vec<GoDep>>,
     pub cargo: Option<Vec<CargoDep>>,
     pub script: Option<Vec<ScriptDep>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PackageDep {
+    Simple(String),
+    Platform {
+        brew: Option<String>,
+        apt: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

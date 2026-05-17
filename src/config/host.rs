@@ -1,9 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PackageManager {
+    Brew,
+    Apt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Host {
     pub description: Option<String>,
     pub os: String,
+    pub package_manager: Option<PackageManager>,
     pub default_profile: Option<String>,
 }
 

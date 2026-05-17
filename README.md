@@ -56,8 +56,14 @@ mos deps install              # install missing dependencies
 dotfiles_dir = "~/.dotfiles"
 backup_dir   = "~/.mos-backups"
 
-[hosts."my-machine.local"]
+[hosts."my-mac.local"]
 os              = "macos"
+package_manager = "brew"
+default_profile = "home"
+
+[hosts."my-linux.local"]
+os              = "linux"
+package_manager = "apt"
 default_profile = "home"
 
 [profiles.home]
@@ -68,18 +74,35 @@ source  = "zsh/.zshrc"
 target  = "~/.zshrc"
 
 [modules.zsh.deps]
-brew = ["fzf", "eza", "zoxide"]
+packages = ["fzf", "eza", "zoxide"]
 
 # deps-only module (no source/target)
 [modules.ripgrep.deps]
-brew = ["ripgrep"]
+packages = ["ripgrep"]
+
+# cross-platform with name differences
+[modules.yazi.deps]
+packages = [
+  "yazi",
+  "ffmpeg",
+  { brew = "sevenzip", apt = "7zip" },
+  { brew = "poppler",  apt = "poppler-utils" },
+  { brew = "fd",       apt = "fd-find" },
+  "ripgrep",
+  "fzf",
+  { brew = "resvg" },   # not available on apt
+]
 ```
 
 ## Dependency backends
 
-| Backend  | Example                                          |
-| -------- | ------------------------------------------------ |
-| `brew`   | `["git"]` or `[{ pkg = "ripgrep", bin = "rg" }]` |
-| `cargo`  | `["stylua"]`                                     |
-| `go`     | `["github.com/user/tool@latest"]`                |
-| `script` | `[{ name = "x", cmd = "curl ..." }]`             |
+| Backend    | Example                                              |
+| ---------- | ---------------------------------------------------- |
+| `packages` | `["git"]` or `[{ brew = "sevenzip", apt = "7zip" }]` |
+| `brew`     | `["git"]` or `[{ pkg = "ripgrep", bin = "rg" }]`     |
+| `apt`      | `["git"]` or `[{ pkg = "fd-find", bin = "fdfind" }]` |
+| `cargo`    | `["stylua"]`                                         |
+| `go`       | `["github.com/user/tool@latest"]`                    |
+| `script`   | `[{ name = "x", cmd = "curl ..." }]`                 |
+
+`packages` is the cross-platform field. Plain strings use the same name on every manager; inline maps let you specify per-manager names or omit a key to skip that platform. `brew` and `apt` are for packages that only make sense on one platform.

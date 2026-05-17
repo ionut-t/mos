@@ -69,11 +69,21 @@ impl RegisterCommand {
 
         let os = host::detect_os();
 
+        let pkg_manager_options = ["brew", "apt"];
+        let default_pm = if os == "macos" { 0 } else { 1 };
+        let pm_idx = Select::with_theme(&theme)
+            .with_prompt("Package manager")
+            .items(pkg_manager_options)
+            .default(default_pm)
+            .interact()?;
+        let package_manager = pkg_manager_options[pm_idx];
+
         let raw = std::fs::read_to_string(config_path)?;
         let mut doc: DocumentMut = raw.parse()?;
 
         let mut host_table = Table::new();
         host_table["os"] = value(os);
+        host_table["package_manager"] = value(package_manager);
         host_table["default_profile"] = value(default_profile.as_str());
 
         doc["hosts"][&hostname] = Item::Table(host_table);
@@ -132,10 +142,20 @@ impl InfoCommand {
             )
         })?;
 
-        println!("Hostname: {}", hostname);
-        println!("OS:       {}", host.os);
+        println!("Hostname:        {}", hostname);
+        println!("OS:              {}", host.os);
         println!(
-            "Profile:  {}",
+            "Package manager: {}",
+            host.package_manager
+                .as_ref()
+                .map(|pm| match pm {
+                    host::PackageManager::Brew => "brew",
+                    host::PackageManager::Apt => "apt",
+                })
+                .unwrap_or("auto-detect")
+        );
+        println!(
+            "Profile:         {}",
             host.default_profile.as_deref().unwrap_or("none")
         );
 

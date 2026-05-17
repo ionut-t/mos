@@ -30,13 +30,14 @@ impl InstalledCache {
     }
 }
 
-pub fn install(pkg: &str) -> Result<()> {
+pub fn install(pkgs: &[&str]) -> Result<()> {
     let status = std::process::Command::new("brew")
-        .args(["install", pkg])
+        .arg("install")
+        .args(pkgs)
         .status()?;
 
     if !status.success() {
-        eyre::bail!("failed to install brew package: {}", pkg);
+        eyre::bail!("failed to install brew packages: {}", pkgs.join(", "));
     }
 
     Ok(())
