@@ -108,6 +108,9 @@ impl SwitchCommand {
 
         // Link new profile
         let profile = &config.profiles[&self.name];
+        // Collected up front: the filter borrows `state.links` immutably, which
+        // would otherwise conflict with the `&mut state` passed to link_module
+        // below for the lifetime of the loop.
         let to_link: Vec<&String> = profile
             .modules
             .iter()

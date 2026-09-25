@@ -5,7 +5,6 @@ use std::path::Path;
 
 use chrono::Local;
 use color_eyre::eyre::{Result, eyre};
-use colored::Colorize;
 
 use crate::config::Config;
 use crate::state::{LinkState, LinkedFile, State};
@@ -35,11 +34,10 @@ pub fn link_module(
     let resolved = resolve_files(config, module_name, profile, hostname)?;
 
     if resolved.is_empty() {
-        println!(
-            "{} {} — no files found for configured source",
-            "⚠".yellow(),
+        ui::warn(format!(
+            "{} — no files found for configured source",
             module_name
-        );
+        ));
         return Ok(());
     }
 
@@ -71,12 +69,11 @@ pub fn link_module(
         } else if file.target.exists() {
             // Regular file — back it up first
             let backup_path = backup_file(&file.target, &backup_dir, backup_format)?;
-            println!(
-                "  {} Backed up {} -> {}",
-                "↺".yellow(),
+            ui::success_item(format!(
+                "Backed up {} -> {}",
                 file.target.display(),
                 backup_path.display()
-            );
+            ));
             state.backups.insert(
                 file.target.display().to_string(),
                 backup_path.display().to_string(),
@@ -120,7 +117,7 @@ pub fn link_module(
     if backed_up > 0 {
         detail.push_str(&format!(", {} backed up", backed_up));
     }
-    println!("{} {} {}", "✓".green(), module_name.bold(), detail.dimmed());
+    ui::module_linked(module_name, detail);
 
     state.links.insert(
         module_name.to_string(),
@@ -177,19 +174,17 @@ pub fn unlink_module(state: &mut State, module_name: &str) -> Result<()> {
                     std::fs::remove_file(target).map_err(|e| {
                         eyre!("failed to remove symlink {}: {}", target.display(), e)
                     })?;
-                    println!("  {} Removed {}", "✓".green(), target.display());
+                    ui::success_item(format!("Removed {}", target.display()));
                 } else {
-                    ui::item(format!(
-                        "{} Skipped {} (points to different source)",
-                        "⚠".yellow(),
+                    ui::warn_item(format!(
+                        "Skipped {} (points to different source)",
                         target.display()
                     ));
                 }
             }
         } else if target.exists() {
-            ui::item(format!(
-                "{} Skipped {} (not a symlink, may have been modified)",
-                "⚠".yellow(),
+            ui::warn_item(format!(
+                "Skipped {} (not a symlink, may have been modified)",
                 target.display()
             ));
         } else {

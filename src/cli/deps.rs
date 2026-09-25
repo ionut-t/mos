@@ -89,9 +89,10 @@ fn check(config_path: &std::path::Path) -> Result<()> {
     let (collected, profile_name) = collect(config_path)?;
 
     ui::step(format!(
-        "Checking dependencies for profile '{}'...\n",
+        "Checking dependencies for profile '{}'...",
         profile_name
     ));
+    println!();
 
     let apt_cache = deps::apt::InstalledCache::load();
     let brew_cache = deps::brew::InstalledCache::load();

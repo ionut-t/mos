@@ -29,6 +29,26 @@ pub fn item(msg: impl Display) {
     println!("  {}", msg);
 }
 
+/// An indented positive outcome under a step, e.g. a file that was backed up.
+pub fn success_item(msg: impl Display) {
+    println!("  {} {}", "✓".green(), msg);
+}
+
+/// An indented warning under a step, e.g. a skipped or missing file.
+pub fn warn_item(msg: impl Display) {
+    println!("  {} {}", "⚠".yellow(), msg);
+}
+
+/// Reports a module as linked, e.g. "✓ nvim  3 files [base], 2 linked".
+pub fn module_linked(module_name: &str, detail: impl Display) {
+    println!(
+        "{} {} {}",
+        "✓".green(),
+        module_name.bold(),
+        detail.to_string().dimmed()
+    );
+}
+
 /// An indented, de-emphasized line under a step.
 pub fn detail(msg: impl Display) {
     println!("  {}", msg.to_string().dimmed());
