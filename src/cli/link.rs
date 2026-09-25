@@ -9,6 +9,7 @@ use crate::{
     },
     linker,
     state::State,
+    ui,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -50,9 +51,11 @@ impl LinkCommand {
                 .get(profile_name)
                 .ok_or_else(|| eyre!("profile '{}' not found in config", profile_name))?;
 
-            println!("Linking all modules in profile '{}'...", profile_name);
+            ui::step(format!(
+                "Linking all modules in profile '{}'...",
+                profile_name
+            ));
             for module_name in &profile_config.modules {
-                println!("Module '{}':", module_name);
                 linker::link_module(
                     &config,
                     &mut state,
@@ -62,7 +65,7 @@ impl LinkCommand {
                 )?;
             }
         } else if let Some(ref module_name) = self.module {
-            println!("Linking module '{}'...", module_name);
+            ui::step(format!("Linking module '{}'...", module_name));
             linker::link_module(
                 &config,
                 &mut state,
@@ -74,7 +77,7 @@ impl LinkCommand {
 
         state.last_sync = Some(chrono::Local::now().to_rfc3339());
         state.save()?;
-        println!("State saved.");
+        ui::success("State saved.");
 
         Ok(())
     }

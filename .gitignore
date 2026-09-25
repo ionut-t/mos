@@ -1,1 +1,10 @@
+# Build artifacts
 /target
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.tmp

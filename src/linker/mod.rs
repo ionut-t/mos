@@ -8,6 +8,7 @@ use color_eyre::eyre::{Result, eyre};
 
 use crate::config::Config;
 use crate::state::{LinkState, LinkedFile, State};
+use crate::ui;
 
 use self::backup::backup_file;
 use self::overlay::resolve_files;
@@ -20,14 +21,23 @@ pub fn link_module(
     profile: Option<&str>,
     hostname: &str,
 ) -> Result<()> {
-    if !config.modules.contains_key(module_name) {
-        return Err(eyre!("module '{}' not found in config", module_name));
+    let module = config
+        .modules
+        .get(module_name)
+        .ok_or_else(|| eyre!("module '{}' not found in config", module_name))?;
+
+    // deps-only module: nothing to link, nothing to report.
+    if module.source.is_none() {
+        return Ok(());
     }
 
     let resolved = resolve_files(config, module_name, profile, hostname)?;
 
     if resolved.is_empty() {
-        println!("  No files found for module '{}'", module_name);
+        ui::warn(format!(
+            "{} — no files found for configured source",
+            module_name
+        ));
         return Ok(());
     }
 
@@ -36,6 +46,8 @@ pub fn link_module(
 
     let mut linked_files = Vec::new();
     let mut primary_layer = String::new();
+    let mut backed_up = 0usize;
+    let mut created = 0usize;
 
     for file in &resolved {
         // Track the highest-priority layer seen
@@ -57,17 +69,18 @@ pub fn link_module(
         } else if file.target.exists() {
             // Regular file — back it up first
             let backup_path = backup_file(&file.target, &backup_dir, backup_format)?;
-            println!(
-                "  Backed up {} -> {}",
+            ui::success_item(format!(
+                "Backed up {} -> {}",
                 file.target.display(),
                 backup_path.display()
-            );
+            ));
             state.backups.insert(
                 file.target.display().to_string(),
                 backup_path.display().to_string(),
             );
             std::fs::remove_file(&file.target)
                 .map_err(|e| eyre!("failed to remove {}: {}", file.target.display(), e))?;
+            backed_up += 1;
         }
 
         // Create parent directories if needed
@@ -89,20 +102,23 @@ pub fn link_module(
         #[cfg(not(unix))]
         return Err(eyre!("symlink creation is only supported on Unix"));
 
-        println!(
-            "  {} -> {} [{}]",
-            file.target.display(),
-            file.source.display(),
-            file.layer
-        );
-
+        created += 1;
         linked_files.push(LinkedFile {
             source: file.source.clone(),
             target: file.target.clone(),
         });
     }
 
-    let module = &config.modules[module_name];
+    let file_word = if resolved.len() == 1 { "file" } else { "files" };
+    let mut detail = format!("{} {} [{}]", resolved.len(), file_word, primary_layer);
+    if created > 0 {
+        detail.push_str(&format!(", {} linked", created));
+    }
+    if backed_up > 0 {
+        detail.push_str(&format!(", {} backed up", backed_up));
+    }
+    ui::module_linked(module_name, detail);
+
     state.links.insert(
         module_name.to_string(),
         LinkState {
@@ -158,21 +174,21 @@ pub fn unlink_module(state: &mut State, module_name: &str) -> Result<()> {
                     std::fs::remove_file(target).map_err(|e| {
                         eyre!("failed to remove symlink {}: {}", target.display(), e)
                     })?;
-                    println!("  Removed {}", target.display());
+                    ui::success_item(format!("Removed {}", target.display()));
                 } else {
-                    println!(
-                        "  Skipped {} (points to different source)",
+                    ui::warn_item(format!(
+                        "Skipped {} (points to different source)",
                         target.display()
-                    );
+                    ));
                 }
             }
         } else if target.exists() {
-            println!(
-                "  Skipped {} (not a symlink, may have been modified)",
+            ui::warn_item(format!(
+                "Skipped {} (not a symlink, may have been modified)",
                 target.display()
-            );
+            ));
         } else {
-            println!("  Skipped {} (already gone)", target.display());
+            ui::detail(format!("Skipped {} (already gone)", target.display()));
         }
     }
 

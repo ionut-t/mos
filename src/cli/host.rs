@@ -1,10 +1,12 @@
 use color_eyre::eyre::{self, Result, eyre};
+use colored::Colorize;
 use dialoguer::{Confirm, Select, theme::ColorfulTheme};
 use toml_edit::{DocumentMut, Item, Table, value};
 
 use crate::{
     config::{Config, host},
     state::State,
+    ui,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -94,10 +96,10 @@ impl RegisterCommand {
         state.active_profile = Some(default_profile.clone());
         state.save()?;
 
-        println!(
+        ui::success(format!(
             "Registered host {} with profile {}",
             hostname, default_profile,
-        );
+        ));
 
         Ok(())
     }
@@ -112,15 +114,14 @@ impl ListCommand {
         let state = State::load()?;
 
         if config.hosts.is_empty() {
-            println!("No hosts registered - use 'dotm host register' to add this machine");
+            ui::warn("No hosts registered - use 'dotm host register' to add this machine");
             return Ok(());
         }
 
         for (name, host) in &config.hosts {
             let current = state.hostname == *name;
-            let marker = if current { "*" } else { " " };
             let profile = host.default_profile.as_deref().unwrap_or("none");
-            println!("{} [{}]  ({})", marker, name, profile);
+            println!("{} {}  ({})", ui::bullet(current), name, profile);
         }
 
         Ok(())
@@ -142,10 +143,11 @@ impl InfoCommand {
             )
         })?;
 
-        println!("Hostname:        {}", hostname);
-        println!("OS:              {}", host.os);
+        println!("{} {}", "Hostname:       ".bold(), hostname);
+        println!("{} {}", "OS:             ".bold(), host.os);
         println!(
-            "Package manager: {}",
+            "{} {}",
+            "Package manager:".bold(),
             host.package_manager
                 .as_ref()
                 .map(|pm| match pm {
@@ -155,7 +157,8 @@ impl InfoCommand {
                 .unwrap_or("auto-detect")
         );
         println!(
-            "Profile:         {}",
+            "{} {}",
+            "Profile:        ".bold(),
             host.default_profile.as_deref().unwrap_or("none")
         );
 
@@ -174,7 +177,7 @@ impl RemoveCommand {
         let hostnames: Vec<&String> = config.hosts.keys().collect();
 
         if hostnames.is_empty() {
-            println!("No hosts registered");
+            ui::warn("No hosts registered");
             return Ok(());
         }
 
@@ -192,7 +195,7 @@ impl RemoveCommand {
             .interact()?;
 
         if !confirmed {
-            println!("Cancelled.");
+            ui::warn("Cancelled.");
             return Ok(());
         }
 
@@ -214,7 +217,7 @@ impl RemoveCommand {
             state.save()?;
         }
 
-        println!("Removed host '{}'.", hostname);
+        ui::success(format!("Removed host '{}'.", hostname));
 
         Ok(())
     }

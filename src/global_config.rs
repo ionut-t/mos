@@ -23,8 +23,7 @@ impl GlobalConfig {
     }
 
     pub fn save(dotfiles_dir: &Path) -> Result<()> {
-        let path = Self::path()
-            .ok_or_else(|| eyre!("could not determine config directory"))?;
+        let path = Self::path().ok_or_else(|| eyre!("could not determine config directory"))?;
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)

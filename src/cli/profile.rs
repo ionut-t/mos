@@ -7,6 +7,7 @@ use crate::{
     config::{Config, host},
     linker,
     state::State,
+    ui,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -50,17 +51,16 @@ impl ListCommand {
         let state = State::load()?;
 
         if config.profiles.is_empty() {
-            println!("No profiles configured.");
+            ui::warn("No profiles configured.");
             return Ok(());
         }
 
         for (name, profile) in &config.profiles {
             let active = state.active_profile.as_deref() == Some(name);
-            let active_marker = if active { "*" } else { " " };
 
             println!(
                 "{} {} ({} modules)",
-                active_marker,
+                ui::bullet(active),
                 name,
                 profile.modules.len()
             );
@@ -87,7 +87,7 @@ impl SwitchCommand {
         }
 
         if state.active_profile.as_deref() == Some(&self.name) {
-            println!("Already on profile '{}'", self.name);
+            ui::warn(format!("Already on profile '{}'", self.name));
             return Ok(());
         }
 
@@ -95,7 +95,10 @@ impl SwitchCommand {
         if let Some(ref current_profile_name) = state.active_profile
             && let Some(profile) = config.profiles.get(current_profile_name)
         {
-            println!("Unlinking current profile '{}'...", current_profile_name);
+            ui::step(format!(
+                "Unlinking current profile '{}'...",
+                current_profile_name
+            ));
             for module_name in &profile.modules {
                 if state.links.contains_key(module_name) {
                     linker::unlink_module(&mut state, module_name)?;
@@ -105,22 +108,28 @@ impl SwitchCommand {
 
         // Link new profile
         let profile = &config.profiles[&self.name];
-        println!("Linking new profile '{}'...", self.name);
-        for module_name in &profile.modules {
-            if !state.links.contains_key(module_name) {
-                linker::link_module(
-                    &config,
-                    &mut state,
-                    module_name,
-                    Some(&self.name),
-                    &hostname,
-                )?;
-            }
+        // Collected up front: the filter borrows `state.links` immutably, which
+        // would otherwise conflict with the `&mut state` passed to link_module
+        // below for the lifetime of the loop.
+        let to_link: Vec<&String> = profile
+            .modules
+            .iter()
+            .filter(|m| !state.links.contains_key(*m))
+            .collect();
+        ui::step(format!("Linking new profile '{}'...", self.name));
+        for module_name in to_link {
+            linker::link_module(
+                &config,
+                &mut state,
+                module_name,
+                Some(&self.name),
+                &hostname,
+            )?;
         }
 
         state.active_profile = Some(self.name.clone());
         state.save()?;
-        println!("Switched to profile '{}'", self.name);
+        ui::success(format!("Switched to profile '{}'", self.name));
 
         Ok(())
     }
@@ -205,7 +214,7 @@ impl CreateCommand {
         std::fs::create_dir_all(&profile_dir)
             .map_err(|e| eyre!("failed to create profile directory: {}", e))?;
 
-        println!("Created profile '{}'.", self.name);
+        ui::success(format!("Created profile '{}'.", self.name));
 
         Ok(())
     }
@@ -259,11 +268,11 @@ impl OverrideCommand {
             eyre::bail!("no base source found for module '{}'", self.module);
         }
 
-        println!("Created override at {}", dest.display());
-        println!(
+        ui::success(format!("Created override at {}", dest.display()));
+        ui::detail(format!(
             "Edit the files there, then run `mos link {}` to apply.",
             self.module
-        );
+        ));
 
         Ok(())
     }
@@ -325,7 +334,7 @@ impl RemoveCommand {
             .default(false)
             .interact()?;
         if !confirmed {
-            println!("Aborted.");
+            ui::warn("Aborted.");
             return Ok(());
         }
 
@@ -365,11 +374,11 @@ impl RemoveCommand {
             if profile_dir.exists() {
                 std::fs::remove_dir_all(&profile_dir)
                     .map_err(|e| eyre!("failed to remove {}: {}", profile_dir.display(), e))?;
-                println!("Removed directory {}", profile_dir.display());
+                ui::item(format!("Removed directory {}", profile_dir.display()));
             }
         }
 
-        println!("Removed profile '{}'.", name);
+        ui::success(format!("Removed profile '{}'.", name));
         Ok(())
     }
 }

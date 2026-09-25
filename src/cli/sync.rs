@@ -8,6 +8,7 @@ use crate::{
     config::{Config, host::detect_hostname},
     linker,
     state::State,
+    ui,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -46,7 +47,7 @@ impl SyncCommand {
 }
 
 fn pull(config: &Config, dotfiles_dir: &Path, mut state: State) -> Result<()> {
-    println!("Pulling latest changes...");
+    ui::step("Pulling latest changes...");
     git(&["pull"], dotfiles_dir)?;
 
     let hostname = detect_hostname();
@@ -54,7 +55,7 @@ fn pull(config: &Config, dotfiles_dir: &Path, mut state: State) -> Result<()> {
     let profile_name = match state.active_profile.clone() {
         Some(p) => p,
         None => {
-            println!("No active profile — skipping re-link.");
+            ui::warn("No active profile — skipping re-link.");
             return Ok(());
         }
     };
@@ -64,9 +65,8 @@ fn pull(config: &Config, dotfiles_dir: &Path, mut state: State) -> Result<()> {
         .get(&profile_name)
         .ok_or_else(|| eyre!("profile '{}' not found in config", profile_name))?;
 
-    println!("Re-linking profile '{}'...", profile_name);
+    ui::step(format!("Re-linking profile '{}'...", profile_name));
     for module_name in &profile.modules {
-        println!("Module '{}':", module_name);
         linker::link_module(
             config,
             &mut state,
@@ -122,6 +122,7 @@ fn push(
     }
 
     git(&["push"], dotfiles_dir)?;
+    ui::success("Pushed.");
     Ok(())
 }
 

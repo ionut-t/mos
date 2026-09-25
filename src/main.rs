@@ -5,6 +5,7 @@ mod global_config;
 mod linker;
 mod path;
 mod state;
+mod ui;
 
 use clap::Parser;
 use color_eyre::eyre::Result;

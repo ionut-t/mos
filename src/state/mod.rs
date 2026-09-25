@@ -62,8 +62,8 @@ impl State {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|e| eyre!("failed to read state at {}: {}", path.display(), e))?;
-        let state: State = toml::from_str(&content)
-            .map_err(|e| eyre!("failed to parse state: {}", e))?;
+        let state: State =
+            toml::from_str(&content).map_err(|e| eyre!("failed to parse state: {}", e))?;
         Ok(state)
     }
 
@@ -73,8 +73,8 @@ impl State {
             std::fs::create_dir_all(parent)
                 .map_err(|e| eyre!("failed to create state directory: {}", e))?;
         }
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| eyre!("failed to serialize state: {}", e))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| eyre!("failed to serialize state: {}", e))?;
         std::fs::write(&path, content)
             .map_err(|e| eyre!("failed to write state to {}: {}", path.display(), e))?;
         Ok(())
