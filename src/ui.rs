@@ -39,7 +39,7 @@ pub fn warn_item(msg: impl Display) {
     println!("  {} {}", "⚠".yellow(), msg);
 }
 
-/// Reports a module as linked, e.g. "✓ nvim  3 files [base], 2 linked".
+/// Reports a module as linked, e.g. "✓ nvim  3 files \[base\], 2 linked".
 pub fn module_linked(module_name: &str, detail: impl Display) {
     println!(
         "{} {} {}",
