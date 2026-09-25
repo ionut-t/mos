@@ -5,6 +5,7 @@ use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use crate::config::host::{detect_hostname, detect_os};
 use crate::global_config::GlobalConfig;
+use crate::ui;
 
 #[derive(clap::Parser, Debug)]
 pub struct InitCommand {}
@@ -25,7 +26,7 @@ impl InitCommand {
         let base = expand_input_path(&raw)?;
 
         println!();
-        println!("  Location: {}", base.display());
+        ui::detail(format!("Location: {}", base.display()));
         println!();
 
         let confirmed = Confirm::with_theme(&theme)
@@ -34,7 +35,7 @@ impl InitCommand {
             .interact()?;
 
         if !confirmed {
-            println!("Cancelled.");
+            ui::warn("Cancelled.");
             return Ok(());
         }
 
@@ -45,7 +46,7 @@ impl InitCommand {
             let dir_path = base.join(dir);
             std::fs::create_dir_all(&dir_path)
                 .map_err(|e| eyre!("failed to create {}: {}", dir_path.display(), e))?;
-            println!("  Created {}/", dir);
+            ui::item(format!("Created {}/", dir));
         }
 
         let config_path = base.join("mos.toml");
@@ -53,21 +54,24 @@ impl InitCommand {
             let starter = generate_starter_config(&base);
             std::fs::write(&config_path, starter)
                 .map_err(|e| eyre!("failed to write {}: {}", config_path.display(), e))?;
-            println!("  Created mos.toml");
+            ui::item("Created mos.toml");
         } else {
-            println!("  mos.toml already exists, skipping");
+            ui::item("mos.toml already exists, skipping");
         }
 
         GlobalConfig::save(&base)?;
-        println!("  Saved global config (~/.config/mos/config.toml)");
+        ui::item("Saved global config (~/.config/mos/config.toml)");
 
         println!();
-        println!("Dotfiles repository initialized at {}", base.display());
+        ui::success(format!(
+            "Dotfiles repository initialized at {}",
+            base.display()
+        ));
         println!();
-        println!("Next steps:");
-        println!("  1. Edit mos.toml to define your modules and profiles");
-        println!("  2. Add config files under base/<module>/");
-        println!("  3. Run `mos link <module>` to create symlinks");
+        ui::step("Next steps:");
+        ui::item("1. Edit mos.toml to define your modules and profiles");
+        ui::item("2. Add config files under base/<module>/");
+        ui::item("3. Run `mos link <module>` to create symlinks");
 
         Ok(())
     }

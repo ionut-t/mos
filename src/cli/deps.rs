@@ -1,9 +1,11 @@
 use color_eyre::eyre::{Result, eyre};
+use colored::Colorize;
 
 use crate::{
-    config::{Config, host},
+    config::{Config, host, module::ScriptDep},
     deps::{self, CollectedDeps},
     state::State,
+    ui,
 };
 
 #[derive(clap::Parser, Clone)]
@@ -56,10 +58,40 @@ fn collect(config_path: &std::path::Path) -> Result<(CollectedDeps, String)> {
     Ok((collected, profile_name))
 }
 
+fn run_step(
+    idx: &mut usize,
+    total: usize,
+    tag: &str,
+    pkg: &str,
+    install: impl FnOnce() -> Result<()>,
+    failed: &mut Vec<String>,
+) {
+    *idx += 1;
+    println!("[{}/{}] [{}] installing {}...", idx, total, tag, pkg);
+    match install() {
+        Ok(()) => ui::success(format!("[{}] {}", tag, pkg)),
+        Err(e) => {
+            ui::error(format!("[{}] {}: {}", tag, pkg, e));
+            failed.push(pkg.to_string());
+        }
+    }
+}
+
+fn check_line(tag: &str, name: &str, ok: bool) {
+    if ok {
+        println!("  {} [{}] {}", "✓".green(), tag, name);
+    } else {
+        println!("  {} [{}] {} {}", "✗".red(), tag, name, "missing".red());
+    }
+}
+
 fn check(config_path: &std::path::Path) -> Result<()> {
     let (collected, profile_name) = collect(config_path)?;
 
-    println!("Checking dependencies for profile '{}'...\n", profile_name);
+    ui::step(format!(
+        "Checking dependencies for profile '{}'...\n",
+        profile_name
+    ));
 
     let apt_cache = deps::apt::InstalledCache::load();
     let brew_cache = deps::brew::InstalledCache::load();
@@ -67,68 +99,39 @@ fn check(config_path: &std::path::Path) -> Result<()> {
 
     for dep in &collected.apt {
         let ok = apt_cache.is_installed(dep.pkg());
-        println!(
-            "  [apt] {} — {}",
-            dep.pkg(),
-            if ok { "ok" } else { "missing" }
-        );
-        if !ok {
-            all_ok = false;
-        }
+        check_line("apt", dep.pkg(), ok);
+        all_ok &= ok;
     }
 
     for dep in &collected.brew {
         let ok = brew_cache.is_installed(dep.pkg());
-        println!(
-            "  [brew] {} — {}",
-            dep.pkg(),
-            if ok { "ok" } else { "missing" }
-        );
-        if !ok {
-            all_ok = false;
-        }
+        check_line("brew", dep.pkg(), ok);
+        all_ok &= ok;
     }
 
     for dep in &collected.script {
         let ok = deps::script::is_installed(&dep.name);
-        println!(
-            "  [script] {} — {}",
-            dep.name,
-            if ok { "ok" } else { "missing" }
-        );
-        if !ok {
-            all_ok = false;
-        }
+        check_line("script", &dep.name, ok);
+        all_ok &= ok;
     }
 
     for dep in &collected.cargo {
         let ok = deps::cargo::is_installed(dep.bin());
-        println!(
-            "  [cargo] {} — {}",
-            dep.pkg(),
-            if ok { "ok" } else { "missing" }
-        );
-        if !ok {
-            all_ok = false;
-        }
+        check_line("cargo", dep.pkg(), ok);
+        all_ok &= ok;
     }
 
     for dep in &collected.go {
         let ok = deps::go::is_installed(dep.bin());
-        println!(
-            "  [go] {} — {}",
-            dep.pkg(),
-            if ok { "ok" } else { "missing" }
-        );
-        if !ok {
-            all_ok = false;
-        }
+        check_line("go", dep.pkg(), ok);
+        all_ok &= ok;
     }
 
+    println!();
     if all_ok {
-        println!("\nAll dependencies satisfied.");
+        ui::success("All dependencies satisfied.");
     } else {
-        println!("\nRun `mos deps install` to install missing dependencies.");
+        ui::warn("Run `mos deps install` to install missing dependencies.");
     }
 
     Ok(())
@@ -137,74 +140,130 @@ fn check(config_path: &std::path::Path) -> Result<()> {
 fn install(config_path: &std::path::Path) -> Result<()> {
     let (collected, profile_name) = collect(config_path)?;
 
-    println!(
-        "Installing missing dependencies for profile '{}'...\n",
-        profile_name
-    );
-
     let apt_cache = deps::apt::InstalledCache::load();
     let brew_cache = deps::brew::InstalledCache::load();
-    let mut failed: Vec<String> = vec![];
 
-    for dep in &collected.apt {
-        if !apt_cache.is_installed(dep.pkg()) {
-            println!("  [apt] installing {}...", dep.pkg());
-            if let Err(e) = deps::apt::install(dep.pkg()) {
-                eprintln!("  failed: {}", e);
-                failed.push(dep.pkg().to_string());
-            }
-        }
-    }
-
+    let missing_apt: Vec<&str> = collected
+        .apt
+        .iter()
+        .filter(|dep| !apt_cache.is_installed(dep.pkg()))
+        .map(|dep| dep.pkg())
+        .collect();
     let missing_brew: Vec<&str> = collected
         .brew
         .iter()
         .filter(|dep| !brew_cache.is_installed(dep.pkg()))
         .map(|dep| dep.pkg())
         .collect();
+    let missing_script: Vec<&ScriptDep> = collected
+        .script
+        .iter()
+        .filter(|dep| !deps::script::is_installed(&dep.name))
+        .collect();
+    let missing_cargo: Vec<&str> = collected
+        .cargo
+        .iter()
+        .filter(|dep| !deps::cargo::is_installed(dep.bin()))
+        .map(|dep| dep.pkg())
+        .collect();
+    let missing_go: Vec<&str> = collected
+        .go
+        .iter()
+        .filter(|dep| !deps::go::is_installed(dep.bin()))
+        .map(|dep| dep.pkg())
+        .collect();
+
+    let total = missing_apt.len()
+        + usize::from(!missing_brew.is_empty())
+        + missing_script.len()
+        + missing_cargo.len()
+        + missing_go.len();
+
+    if total == 0 {
+        ui::success(format!(
+            "All dependencies for profile '{}' are already installed.",
+            profile_name
+        ));
+        return Ok(());
+    }
+
+    ui::step(format!(
+        "Installing missing dependencies for profile '{}'...",
+        profile_name
+    ));
+
+    // These installers shell out to brew/apt/cargo/go/sh with the terminal
+    // inherited — they can prompt for a sudo password or print their own
+    // multi-line progress (brew casks, cargo builds). A live progress bar
+    // would fight them for the terminal, so each step gets a plain
+    // announce-then-result pair instead of a redrawing widget.
+    let mut idx = 0usize;
+    let mut failed: Vec<String> = vec![];
+
+    for pkg in &missing_apt {
+        run_step(
+            &mut idx,
+            total,
+            "apt",
+            pkg,
+            || deps::apt::install(pkg),
+            &mut failed,
+        );
+    }
 
     if !missing_brew.is_empty() {
-        println!("  [brew] installing {}...", missing_brew.join(", "));
-        if let Err(e) = deps::brew::install(&missing_brew) {
-            eprintln!("  failed: {}", e);
-            failed.extend(missing_brew.into_iter().map(str::to_string));
-        }
-    }
-    for dep in &collected.script {
-        if !deps::script::is_installed(&dep.name) {
-            println!("  [script] running {}...", dep.name);
-            if let Err(e) = deps::script::install(&dep.name, &dep.cmd) {
-                eprintln!("  failed: {}", e);
-                failed.push(dep.name.clone());
-            }
-        }
-    }
-    for dep in &collected.cargo {
-        if !deps::cargo::is_installed(dep.bin()) {
-            println!("  [cargo] installing {}...", dep.pkg());
-            if let Err(e) = deps::cargo::install(dep.pkg()) {
-                eprintln!("  failed: {}", e);
-                failed.push(dep.pkg().to_string());
-            }
-        }
-    }
-    for dep in &collected.go {
-        if !deps::go::is_installed(dep.bin()) {
-            println!("  [go] installing {}...", dep.pkg());
-            if let Err(e) = deps::go::install(dep.pkg()) {
-                eprintln!("  failed: {}", e);
-                failed.push(dep.pkg().to_string());
-            }
-        }
+        let joined = missing_brew.join(", ");
+        run_step(
+            &mut idx,
+            total,
+            "brew",
+            &joined,
+            || deps::brew::install(&missing_brew),
+            &mut failed,
+        );
     }
 
-    if failed.is_empty() {
-        println!("\nDone.");
-    } else {
-        println!(
-            "\nDone with errors. Failed to install: {}",
-            failed.join(", ")
+    for dep in &missing_script {
+        run_step(
+            &mut idx,
+            total,
+            "script",
+            &dep.name,
+            || deps::script::install(&dep.name, &dep.cmd),
+            &mut failed,
         );
+    }
+
+    for pkg in &missing_cargo {
+        run_step(
+            &mut idx,
+            total,
+            "cargo",
+            pkg,
+            || deps::cargo::install(pkg),
+            &mut failed,
+        );
+    }
+
+    for pkg in &missing_go {
+        run_step(
+            &mut idx,
+            total,
+            "go",
+            pkg,
+            || deps::go::install(pkg),
+            &mut failed,
+        );
+    }
+
+    println!();
+    if failed.is_empty() {
+        ui::success("Done.");
+    } else {
+        ui::error(format!(
+            "Done with errors. Failed to install: {}",
+            failed.join(", ")
+        ));
     }
 
     Ok(())
