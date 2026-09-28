@@ -2,7 +2,10 @@ use color_eyre::eyre::{Result, eyre};
 use colored::Colorize;
 
 use crate::{
-    config::{Config, host, module::ScriptDep},
+    config::{
+        Config, host,
+        module::{BrewDep, ScriptDep},
+    },
     deps::{self, CollectedDeps},
     state::State,
     ui,
@@ -99,19 +102,19 @@ fn check(config_path: &std::path::Path) -> Result<()> {
     let mut all_ok = true;
 
     for dep in &collected.apt {
-        let ok = apt_cache.is_installed(dep.pkg());
+        let ok = apt_cache.is_installed(dep.short_name());
         check_line("apt", dep.pkg(), ok);
         all_ok &= ok;
     }
 
     for dep in &collected.brew {
-        let ok = brew_cache.is_installed(dep.pkg());
+        let ok = brew_cache.is_installed(dep.short_name());
         check_line("brew", dep.pkg(), ok);
         all_ok &= ok;
     }
 
     for dep in &collected.script {
-        let ok = deps::script::is_installed(&dep.name);
+        let ok = deps::script::is_installed(dep);
         check_line("script", &dep.name, ok);
         all_ok &= ok;
     }
@@ -147,19 +150,21 @@ fn install(config_path: &std::path::Path) -> Result<()> {
     let missing_apt: Vec<&str> = collected
         .apt
         .iter()
-        .filter(|dep| !apt_cache.is_installed(dep.pkg()))
+        .filter(|dep| !apt_cache.is_installed(dep.short_name()))
         .map(|dep| dep.pkg())
         .collect();
-    let missing_brew: Vec<&str> = collected
+    let missing_brew: Vec<&BrewDep> = collected
         .brew
         .iter()
-        .filter(|dep| !brew_cache.is_installed(dep.pkg()))
-        .map(|dep| dep.pkg())
+        .filter(|dep| !brew_cache.is_installed(dep.short_name()))
         .collect();
+    let mut brew_taps: Vec<&str> = missing_brew.iter().filter_map(|dep| dep.tap()).collect();
+    brew_taps.sort_unstable();
+    brew_taps.dedup();
     let missing_script: Vec<&ScriptDep> = collected
         .script
         .iter()
-        .filter(|dep| !deps::script::is_installed(&dep.name))
+        .filter(|dep| !deps::script::is_installed(dep))
         .collect();
     let missing_cargo: Vec<&str> = collected
         .cargo
@@ -175,6 +180,7 @@ fn install(config_path: &std::path::Path) -> Result<()> {
         .collect();
 
     let total = missing_apt.len()
+        + usize::from(!brew_taps.is_empty())
         + usize::from(!missing_brew.is_empty())
         + missing_script.len()
         + missing_cargo.len()
@@ -212,16 +218,52 @@ fn install(config_path: &std::path::Path) -> Result<()> {
         );
     }
 
-    if !missing_brew.is_empty() {
-        let joined = missing_brew.join(", ");
+    if !brew_taps.is_empty() {
+        // A failed trust isn't fatal: packages from other taps can still
+        // install, and the affected ones fail with brew's own error below.
         run_step(
             &mut idx,
             total,
             "brew",
-            &joined,
-            || deps::brew::install(&missing_brew),
+            &format!("trusted taps {}", brew_taps.join(", ")),
+            || deps::brew::trust_taps(&brew_taps),
             &mut failed,
         );
+    }
+
+    if !missing_brew.is_empty() {
+        let names: Vec<String> = missing_brew.iter().map(|dep| dep.install_name()).collect();
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut batch_failed = vec![];
+        run_step(
+            &mut idx,
+            total,
+            "brew",
+            &names.join(", "),
+            || deps::brew::install(&names),
+            &mut batch_failed,
+        );
+
+        // brew aborts the whole batch when one package fails to resolve, so
+        // retry individually to install the rest and pinpoint the culprit.
+        if !batch_failed.is_empty() && names.len() > 1 {
+            ui::warn("brew batch failed - retrying packages individually");
+            let brew_cache = deps::brew::InstalledCache::load();
+            for (dep, name) in missing_brew.iter().zip(&names) {
+                if brew_cache.is_installed(dep.short_name()) {
+                    continue;
+                }
+                match deps::brew::install(&[name]) {
+                    Ok(()) => ui::success(format!("[brew] {}", name)),
+                    Err(e) => {
+                        ui::error(format!("[brew] {}: {}", name, e));
+                        failed.push(name.to_string());
+                    }
+                }
+            }
+        } else {
+            failed.extend(batch_failed);
+        }
     }
 
     for dep in &missing_script {

@@ -96,13 +96,34 @@ packages = [
 
 ## Dependency backends
 
-| Backend    | Example                                              |
-| ---------- | ---------------------------------------------------- |
-| `packages` | `["git"]` or `[{ brew = "sevenzip", apt = "7zip" }]` |
-| `brew`     | `["git"]` or `[{ pkg = "ripgrep", bin = "rg" }]`     |
-| `apt`      | `["git"]` or `[{ pkg = "fd-find", bin = "fdfind" }]` |
-| `cargo`    | `["stylua"]`                                         |
-| `go`       | `["github.com/user/tool@latest"]`                    |
-| `script`   | `[{ name = "x", cmd = "curl ..." }]`                 |
+| Backend    | Example                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `packages` | `["git"]` or `[{ brew = "sevenzip", apt = "7zip" }]`              |
+| `brew`     | `["git"]` or `[{ pkg = "borders", tap = "felixkratz/formulae" }]` |
+| `apt`      | `["git"]` or `[{ pkg = "fd-find", bin = "fdfind" }]`              |
+| `cargo`    | `["stylua"]`                                                      |
+| `go`       | `["github.com/user/tool@latest"]`                                 |
+| `script`   | `[{ name = "x", cmd = "curl ...", check = "test -d ~/x" }]`       |
 
 `packages` is the cross-platform field. Plain strings use the same name on every manager; inline maps let you specify per-manager names or omit a key to skip that platform. `brew` and `apt` are for packages that only make sense on one platform.
+
+### Third-party taps
+
+Homebrew 7+ refuses to load formulae and casks from taps you haven't trusted. Declare the tap on the dependency, either with `tap` or a fully-qualified name, and `mos deps install` runs `brew tap` and `brew trust --tap` for it before installing:
+
+```toml
+brew = [
+  { pkg = "borders", tap = "felixkratz/formulae" },
+  "nikitabobko/tap/aerospace",
+]
+```
+
+### Script checks
+
+A script dependency counts as installed when `check` exits 0. Without `check`, mos looks for `name` on `PATH`, which only works when the script installs a binary of that name. Use `check` for anything else, like plugins cloned into a directory:
+
+```toml
+script = [
+  { name = "tpm", check = "test -d ~/.tmux/plugins/tpm", cmd = "git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm" },
+]
+```
