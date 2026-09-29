@@ -53,7 +53,7 @@ impl CollectedDeps {
 fn dedup(deps: Vec<BrewDep>) -> Vec<BrewDep> {
     let mut seen = HashSet::new();
     deps.into_iter()
-        .filter(|d| seen.insert(d.pkg().to_string()))
+        .filter(|d| seen.insert(d.install_name()))
         .collect()
 }
 
