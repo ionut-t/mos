@@ -8,3 +8,6 @@ Thumbs.db
 # Backup files
 *.bak
 *.tmp
+
+# Demo recording scratch space
+demo/.tmp

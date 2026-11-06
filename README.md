@@ -2,6 +2,8 @@
 
 Dotfiles manager with multi-machine, multi-profile overlay support.
 
+![mos demo: link dotfiles, switch profiles, sync, and set up a second machine](assets/demo.gif)
+
 ## Install
 
 ```sh
